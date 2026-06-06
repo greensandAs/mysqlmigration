@@ -1,0 +1,9 @@
+[theme]
+# Pin Streamlit's native widgets (tabs, alerts, inputs) to light so their text
+# is dark and readable. Brand styling is layered on via CSS injection in app.py.
+base = "light"
+primaryColor = "#F15A22"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F5F5F5"
+textColor = "#1A1A2E"
+font = "sans serif"

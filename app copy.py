@@ -25,152 +25,52 @@ except ImportError:
 HERE = Path(__file__).parent
 CONFIG_PATH = HERE / "migration_config.json"
 
-# ─── Tiger Analytics brand tokens ────────────────────────────────────────────
-TA_ORANGE = "#F15A22"
-TA_ORANGE_DARK = "#D94E1C"
-TA_ORANGE_LIGHT = "#FF7A47"
-TA_NAVY = "#1A1A2E"
-TA_FONT = "'Source Sans Pro', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
-# Semantic status palette (brand-aligned)
-ST_SUCCESS = "#4CAF50"
-ST_FAILED = "#E53935"
-ST_SKIPPED = "#FF9800"
-ST_PENDING = "#2196F3"
-ST_SCD2 = "#9C27B0"
-
-_LOGO_DIR = HERE / "assets" / "logos"
-_FAVICON = _LOGO_DIR / "ta_favicon.png"
-
 # ─── Page config ─────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="MySQL → Snowflake · Tiger Analytics",
-    page_icon=str(_FAVICON) if _FAVICON.exists() else "❄️",
+    page_title="MySQL → Snowflake",
+    page_icon="❄️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-
-# ─── Theme detection (works in Snowsight + local) ────────────────────────────
-def _is_dark_color(hex_color: str) -> bool:
-    h = (hex_color or "").lstrip("#")
-    if len(h) != 6:
-        return False
-    r, g, b = int(h[:2], 16), int(h[2:4], 16), int(h[4:], 16)
-    return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.5
-
-
-def get_active_theme() -> str:
-    try:
-        bg = st.get_option("theme.backgroundColor")
-        if bg:
-            return "dark" if _is_dark_color(bg) else "light"
-    except Exception:
-        pass
-    return "light"
-
-
-IS_DARK = get_active_theme() == "dark"
-
-# Resolved theme tokens
-_BG = "#0D1117" if IS_DARK else "#FFFFFF"
-_SURFACE = "#161B22" if IS_DARK else "#F5F5F5"
-_TEXT = "#E6EDF3" if IS_DARK else TA_NAVY
-_TEXT_MUTED = "#8B949E" if IS_DARK else "#4A4A68"
-_BORDER = "#2D333B" if IS_DARK else "#E0E0E0"
-_SB_BG = "#010409" if IS_DARK else TA_NAVY
-_SB_TEXT = "#E6EDF3" if IS_DARK else "#FFFFFF"
-_LOG_BG = "#010409" if IS_DARK else "#1A1A2E"  # terminal stays dark for legibility
-
-# ─── Global CSS (Tiger Analytics, theme-adaptive) ────────────────────────────
-st.markdown(f"""
+# ─── Global CSS ──────────────────────────────────────────────────────────────
+st.markdown("""
 <style>
-html, body, [class*="css"], .stApp {{ font-family: {TA_FONT}; }}
-.stApp, [data-testid="stAppViewContainer"] {{ background-color: {_BG}; color: {_TEXT}; }}
-#MainMenu, footer, header {{ visibility: hidden; }}
-.block-container {{ padding-top: 1.5rem; padding-bottom: 2rem; }}
-h1, h2, h3, h4, h5, h6, .stMarkdown, .stText, .stCaption {{ color: {_TEXT}; }}
-
-/* Metric / KPI cards */
-.metric-card {{ background:{_SURFACE}; border:1px solid {_BORDER}; border-left:4px solid {TA_ORANGE}; border-radius:8px; padding:18px 22px; margin-bottom:12px; }}
-.metric-card .label {{ font-size:0.72rem; letter-spacing:1px; text-transform:uppercase; color:{_TEXT_MUTED}; margin-bottom:4px; font-weight:600; }}
-.metric-card .value {{ font-size:2rem; font-weight:700; color:{_TEXT}; line-height:1; }}
-.metric-card .sub {{ font-size:0.72rem; color:{_TEXT_MUTED}; margin-top:4px; }}
-
-/* Per-table status cards */
-.table-card {{ background:{_SURFACE}; border:1px solid {_BORDER}; border-radius:8px; padding:16px 20px; margin-bottom:10px; position:relative; overflow:hidden; }}
-.table-card::before {{ content:''; position:absolute; left:0; top:0; bottom:0; width:4px; }}
-.table-card.success::before {{ background:{ST_SUCCESS}; }}
-.table-card.failed::before {{ background:{ST_FAILED}; }}
-.table-card.skipped::before {{ background:{ST_SKIPPED}; }}
-.table-card.pending::before {{ background:{ST_PENDING}; }}
-.table-card .tname {{ font-weight:700; font-size:0.95rem; color:{_TEXT}; }}
-.table-card .tmeta {{ font-size:0.74rem; color:{_TEXT_MUTED}; margin-top:2px; }}
-.table-card .tstatus {{ font-size:0.7rem; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; padding:2px 8px; border-radius:4px; float:right; }}
-.tstatus.success {{ background:{ST_SUCCESS}22; color:{ST_SUCCESS}; }}
-.tstatus.failed {{ background:{ST_FAILED}22; color:{ST_FAILED}; }}
-.tstatus.skipped {{ background:{ST_SKIPPED}22; color:{ST_SKIPPED}; }}
-.tstatus.pending {{ background:{ST_PENDING}22; color:{ST_PENDING}; }}
-
-/* Log terminal */
-.log-box {{ background:{_LOG_BG}; border:1px solid {_BORDER}; border-radius:8px; padding:16px; font-family:'Consolas','Menlo',monospace; font-size:0.78rem; color:#C9D1D9; height:340px; overflow-y:auto; white-space:pre-wrap; line-height:1.7; }}
-.log-box .log-ok {{ color:{ST_SUCCESS}; }}
-.log-box .log-err {{ color:{ST_FAILED}; }}
-.log-box .log-warn {{ color:{ST_SKIPPED}; }}
-.log-box .log-info {{ color:{TA_ORANGE_LIGHT}; }}
-
-/* Section headers */
-.section-header {{ font-size:0.7rem; letter-spacing:2px; text-transform:uppercase; color:{TA_ORANGE}; margin-bottom:12px; padding-bottom:6px; border-bottom:1px solid {_BORDER}; font-weight:700; }}
-
-/* Pills */
-.pill {{ display:inline-block; padding:2px 10px; border-radius:20px; font-size:0.68rem; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; }}
-.pill-full {{ background:{ST_PENDING}22; color:{ST_PENDING}; }}
-.pill-incr {{ background:{ST_SUCCESS}22; color:{ST_SUCCESS}; }}
-
-/* Sidebar — navy with orange top accent */
-section[data-testid="stSidebar"] {{ background-color:{_SB_BG}; }}
-section[data-testid="stSidebar"] > div:first-child {{ border-top:4px solid {TA_ORANGE}; }}
-section[data-testid="stSidebar"] .stMarkdown, section[data-testid="stSidebar"] .stCaption,
-section[data-testid="stSidebar"] label {{ color:{_SB_TEXT} !important; }}
-
-/* Buttons — Tiger Orange */
-.stButton > button, .stDownloadButton > button {{ background-color:{TA_ORANGE}; color:#FFFFFF; border:none; border-radius:6px; font-weight:600; letter-spacing:0.3px; transition:all 0.15s; }}
-.stButton > button:hover, .stDownloadButton > button:hover {{ background-color:{TA_ORANGE_DARK}; color:#FFFFFF; }}
-
-/* Tabs */
-.stTabs [data-baseweb="tab"], .stTabs [data-baseweb="tab"] p {{ color:{_TEXT} !important; font-weight:600; }}
-.stTabs [aria-selected="true"], .stTabs [aria-selected="true"] p {{ border-bottom-color:{TA_ORANGE} !important; color:{TA_ORANGE} !important; }}
-/* Alert boxes (info/warning/success/error) — ensure readable text */
-[data-testid="stAlert"], [data-testid="stAlertContainer"],
-[data-testid="stAlert"] p, [data-testid="stAlertContainer"] p,
-div[data-baseweb="notification"], div[data-baseweb="notification"] p {{ color:{_TEXT} !important; }}
-a {{ color:{TA_ORANGE}; }}
-.stDataFrame th {{ background-color:{_SURFACE}; color:{_TEXT}; }}
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Syne:wght@400;600;800&display=swap');
+html, body, [class*="css"] { font-family: 'Syne', sans-serif; }
+#MainMenu, footer, header { visibility: hidden; }
+.block-container { padding-top: 1.5rem; padding-bottom: 2rem; }
+.metric-card { background:#0f1923; border:1px solid #1e3a5f; border-radius:10px; padding:18px 22px; margin-bottom:12px; }
+.metric-card .label { font-size:0.72rem; letter-spacing:2px; text-transform:uppercase; color:#4a7fa5; margin-bottom:4px; }
+.metric-card .value { font-family:'JetBrains Mono',monospace; font-size:2rem; font-weight:600; color:#e8f4fd; line-height:1; }
+.metric-card .sub { font-size:0.72rem; color:#4a7fa5; margin-top:4px; }
+.table-card { background:#0f1923; border:1px solid #1e3a5f; border-radius:10px; padding:16px 20px; margin-bottom:10px; position:relative; overflow:hidden; }
+.table-card::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; }
+.table-card.success::before { background:#00c896; }
+.table-card.failed::before { background:#ff4b6e; }
+.table-card.skipped::before { background:#f59e0b; }
+.table-card.pending::before { background:#4a7fa5; }
+.table-card .tname { font-weight:600; font-size:0.95rem; color:#e8f4fd; }
+.table-card .tmeta { font-family:'JetBrains Mono',monospace; font-size:0.72rem; color:#4a7fa5; margin-top:2px; }
+.table-card .tstatus { font-size:0.7rem; font-weight:600; letter-spacing:1px; text-transform:uppercase; padding:2px 8px; border-radius:4px; float:right; }
+.tstatus.success { background:#003d2e; color:#00c896; }
+.tstatus.failed { background:#3d0014; color:#ff4b6e; }
+.tstatus.skipped { background:#3d2800; color:#f59e0b; }
+.tstatus.pending { background:#0a1929; color:#4a7fa5; }
+.log-box { background:#060d14; border:1px solid #1e3a5f; border-radius:8px; padding:16px; font-family:'JetBrains Mono',monospace; font-size:0.75rem; color:#7eb8d4; height:340px; overflow-y:auto; white-space:pre-wrap; line-height:1.7; }
+.log-box .log-ok { color:#00c896; }
+.log-box .log-err { color:#ff4b6e; }
+.log-box .log-warn { color:#f59e0b; }
+.log-box .log-info { color:#a78bfa; }
+.section-header { font-size:0.68rem; letter-spacing:3px; text-transform:uppercase; color:#4a7fa5; margin-bottom:12px; padding-bottom:6px; border-bottom:1px solid #1e3a5f; }
+.pill { display:inline-block; padding:2px 10px; border-radius:20px; font-size:0.68rem; font-weight:600; letter-spacing:1px; text-transform:uppercase; }
+.pill-full { background:#0a2540; color:#4a7fa5; }
+.pill-incr { background:#003d2e; color:#00c896; }
+section[data-testid="stSidebar"] { background:#060d14; border-right:1px solid #1e3a5f; }
+.stButton > button { background:#0a2540; color:#4a9fd4; border:1px solid #1e3a5f; border-radius:6px; font-family:'JetBrains Mono',monospace; font-size:0.8rem; letter-spacing:1px; transition:all 0.2s; }
+.stButton > button:hover { background:#1e3a5f; color:#e8f4fd; border-color:#4a7fa5; }
 </style>
 """, unsafe_allow_html=True)
-
-
-# ─── Branded header / footer ─────────────────────────────────────────────────
-def render_header(title: str, subtitle: str = ""):
-    logo = _LOGO_DIR / ("ta_logo_dark.svg" if IS_DARK else "ta_logo_light.svg")
-    c1, c2 = st.columns([1, 6])
-    with c1:
-        if logo.exists():
-            st.image(str(logo), width=120)
-    with c2:
-        st.markdown(
-            f'<h2 style="margin:0;font-weight:700;color:{_TEXT};">{title}</h2>'
-            + (f'<div style="color:{_TEXT_MUTED};font-size:0.85rem;">{subtitle}</div>'
-               if subtitle else ""),
-            unsafe_allow_html=True,
-        )
-
-
-def render_footer():
-    st.markdown("---")
-    st.markdown(
-        f'<p style="text-align:center;color:{_TEXT_MUTED};font-size:0.8rem;">'
-        f'Powered by <span style="color:{TA_ORANGE};font-weight:700;">Tiger Analytics</span>'
-        , unsafe_allow_html=True)
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -295,60 +195,28 @@ def run_subprocess_stream(args):
 # ─── Sidebar ─────────────────────────────────────────────────────────────────
 cfg = load_config()
 
-
-def check_connections(_cfg) -> dict:
-    """Probe MySQL + Snowflake. Returns {name: (ok, detail)}."""
-    out = {}
-    try:
-        con = get_mysql(_cfg); cur = con.cursor()
-        cur.execute("SELECT VERSION()")
-        out["mysql"] = (True, str(cur.fetchone()[0])[:16])
-        cur.close(); con.close()
-    except Exception as e:  # noqa: BLE001
-        out["mysql"] = (False, str(e)[:90])
-    try:
-        con = get_sf(_cfg); cur = con.cursor()
-        cur.execute("SELECT CURRENT_ACCOUNT()")
-        out["snowflake"] = (True, str(cur.fetchone()[0]))
-        cur.close(); con.close()
-    except Exception as e:  # noqa: BLE001
-        out["snowflake"] = (False, str(e)[:90])
-    return out
-
-
-def _status_dot(label: str, ok: bool, detail: str) -> str:
-    color = ST_SUCCESS if ok else ST_FAILED
-    shown = detail if ok else "unreachable"
-    return (f'<div style="display:flex;align-items:center;gap:8px;padding:3px 0;">'
-            f'<span style="color:{color};font-size:0.9rem;line-height:1;">●</span>'
-            f'<span style="color:{_SB_TEXT};font-size:0.82rem;">{label} '
-            f'<span style="color:{color};font-weight:600;">{shown}</span></span></div>')
-
-
 with st.sidebar:
     st.markdown("## ❄️ Migration Hub")
     st.markdown("---")
-
-    # Connections — auto-check once on load (cached), small refresh button.
-    h1, h2 = st.columns([3, 1])
-    h1.markdown('<div class="section-header" style="border:none;margin-bottom:0;">'
-                'Connections</div>', unsafe_allow_html=True)
-    if h2.button("↻", help="Re-test connections", key="conn_refresh"):
-        st.session_state.pop("_conn", None)
-    if "_conn" not in st.session_state:
-        with st.spinner("Checking connections…"):
-            st.session_state["_conn"] = check_connections(cfg)
-    _conn = st.session_state["_conn"]
-    m_ok, m_msg = _conn["mysql"]
-    s_ok, s_msg = _conn["snowflake"]
-    st.markdown(_status_dot("MySQL", m_ok, m_msg), unsafe_allow_html=True)
-    st.markdown(_status_dot("Snowflake", s_ok, s_msg), unsafe_allow_html=True)
-    if not (m_ok and s_ok):
-        with st.expander("⚠️ Connection errors"):
-            if not m_ok:
-                st.caption(f"MySQL: {m_msg}")
-            if not s_ok:
-                st.caption(f"Snowflake: {s_msg}")
+    st.markdown('<div class="section-header">Connections</div>',
+                unsafe_allow_html=True)
+    if st.button("Test Connections", use_container_width=True):
+        with st.spinner("Checking…"):
+            try:
+                con = get_mysql(cfg); cur = con.cursor()
+                cur.execute("SELECT VERSION()")
+                st.success(f"MySQL {cur.fetchone()[0][:12]}")
+                cur.close(); con.close()
+            except Exception as e:  # noqa: BLE001
+                st.error(f"MySQL ✗ {str(e)[:60]}")
+            try:
+                con = get_sf(cfg); cur = con.cursor()
+                cur.execute("SELECT CURRENT_ACCOUNT(), CURRENT_WAREHOUSE()")
+                acct, _wh = cur.fetchone()
+                st.success(f"Snowflake: {acct}")
+                cur.close(); con.close()
+            except Exception as e:  # noqa: BLE001
+                st.error(f"Snowflake ✗ {str(e)[:60]}")
 
     st.markdown("---")
     st.markdown('<div class="section-header">Quick Info</div>',
@@ -378,8 +246,7 @@ with st.sidebar:
     st.caption(f"Config: `{CONFIG_PATH.name}`")
 
 # ─── Main area ───────────────────────────────────────────────────────────────
-render_header("MySQL → Snowflake Migration",
-              "Batch ELT into Snowflake · RAW → SILVER / SCD2")
+st.markdown("# MySQL → Snowflake")
 st.markdown("---")
 
 tab_dash, tab_run, tab_config, tab_hist, tab_counts = st.tabs(
@@ -399,10 +266,10 @@ with tab_dash:
         pending_n = sum(1 for t in tables if not t.get("last_run_status"))
         skipped_n = sum(1 for t in tables if t.get("last_run_status") == "skipped")
         for col, label, val, color in [
-            (c1, "SUCCESS", success_n, ST_SUCCESS),
-            (c2, "FAILED", failed_n, ST_FAILED),
-            (c3, "PENDING", pending_n, ST_PENDING),
-            (c4, "SKIPPED", skipped_n, ST_SKIPPED),
+            (c1, "SUCCESS", success_n, "#00c896"),
+            (c2, "FAILED", failed_n, "#ff4b6e"),
+            (c3, "PENDING", pending_n, "#4a7fa5"),
+            (c4, "SKIPPED", skipped_n, "#f59e0b"),
         ]:
             col.markdown(f"""<div class="metric-card" style="border-color:{color}33">
                 <div class="label">{label}</div>
@@ -422,7 +289,7 @@ with tab_dash:
                 "" if active
                 else '<span class="pill" style="background:#1a1a1a;color:#555">INACTIVE</span>')
             scd2_badge = (
-                f'<span class="pill" style="background:{ST_SCD2}22;color:{ST_SCD2}">SCD2</span>'
+                '<span class="pill" style="background:#1e1040;color:#a78bfa">SCD2</span>'
                 if tbl.get("table_type") == "scd2" else "")
             with cols[i % 2]:
                 st.markdown(f"""
@@ -660,13 +527,13 @@ with tab_counts:
                 <div class="value">{total_raw:,}</div></div>""", unsafe_allow_html=True)
             m2.markdown(f"""<div class="metric-card"><div class="label">Total TARGET</div>
                 <div class="value">{total_slv:,}</div></div>""", unsafe_allow_html=True)
-            m3.markdown(f"""<div class="metric-card" style="border-color:{ST_SUCCESS}33">
+            m3.markdown(f"""<div class="metric-card" style="border-color:#00c89633">
                 <div class="label">Matched</div>
-                <div class="value" style="color:{ST_SUCCESS}">{matched}</div></div>""",
+                <div class="value" style="color:#00c896">{matched}</div></div>""",
                         unsafe_allow_html=True)
-            m4.markdown(f"""<div class="metric-card" style="border-color:{ST_FAILED}33">
+            m4.markdown(f"""<div class="metric-card" style="border-color:#ff4b6e33">
                 <div class="label">Mismatched</div>
-                <div class="value" style="color:{ST_FAILED}">{mismatched}</div></div>""",
+                <div class="value" style="color:#ff4b6e">{mismatched}</div></div>""",
                         unsafe_allow_html=True)
             st.markdown("<br>", unsafe_allow_html=True)
             st.dataframe(pd.DataFrame(rows_data), use_container_width=True,
@@ -674,6 +541,3 @@ with tab_counts:
         if auto_refresh:
             time.sleep(30)
             st.rerun()
-
-# ─── Footer ──────────────────────────────────────────────────────────────────
-render_footer()
