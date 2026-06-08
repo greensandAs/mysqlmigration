@@ -184,12 +184,12 @@ def _process_table(tbl, src_cfg, sf_conn, mysql_conn, export_dir, batch_id,
             if wm:
                 rec["watermark_to"] = wm
             watermark.update_config_watermark(
-                config_path, tbl["source_table"], wm, "success")
+                config_path, tbl["source_db"], tbl["source_table"], wm, "success")
             rec["status"] = "success"
         else:
             print("   skipped — no new rows")
             watermark.update_config_watermark(
-                config_path, tbl["source_table"], None, "skipped")
+                config_path, tbl["source_db"], tbl["source_table"], None, "skipped")
 
         sf_conn.commit()
         print(f"   done ({rec['status']})")
@@ -200,7 +200,7 @@ def _process_table(tbl, src_cfg, sf_conn, mysql_conn, export_dir, batch_id,
         rec["failed_step"] = step
         rec["error_message"] = str(e)[:4000]
         watermark.update_config_watermark(
-            config_path, tbl["source_table"], None, "failed")
+            config_path, tbl["source_db"], tbl["source_table"], None, "failed")
         print(f"   FAILED at step '{step}': {e}")
     finally:
         rec["run_end_utc"] = _utc_now()
@@ -342,7 +342,7 @@ def run_validate(config_path: str = "migration_config.json", only_table: str | N
                     "rows_extracted": r["source"], "rows_raw": r["raw_live"],
                     "rows_silver": r["target"], "watermark_from": None,
                     "watermark_to": None,
-                    "status": "success" if ok else "failed",
+                    "status": "success" if ok else "mismatch",
                     "error_message": None if ok else
                     f"source {r['source']} != raw_live {r['raw_live']} (delta {r['delta']:+d})",
                     "failed_step": None if ok else "parity",

@@ -1,12 +1,12 @@
 {
-    "end": "2026-06-06 17:25:35",
-    "dataBytes": 170,
+    "end": "2026-06-08 14:05:03",
+    "dataBytes": 13821993,
     "tableDataBytes": {
-        "mtest": {
-            "employees": 170
+        "employees": {
+            "employees": 13821993
         }
     },
     "chunkFileBytes": {
-        "mtest@employees@@0.tsv.zst": 170
+        "employees@employees@@0.tsv.zst": 13821993
     }
 }

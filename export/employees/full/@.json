@@ -8,10 +8,10 @@
         "threads": 8
     },
     "schemas": [
-        "mtest"
+        "employees"
     ],
     "basenames": {
-        "mtest": "mtest"
+        "employees": "employees"
     },
     "defaultCharacterSet": "utf8mb4",
     "tzUtc": true,
@@ -20,13 +20,13 @@
     "hostname": "TIGER06099",
     "server": "TIGER06099",
     "serverVersion": "8.0.46",
-    "binlogFile": "TIGER06099-bin.000052",
-    "binlogPosition": 7373,
+    "binlogFile": "TIGER06099-bin.000054",
+    "binlogPosition": 66378596,
     "gtidExecuted": "",
     "gtidExecutedInconsistent": false,
     "consistent": true,
     "partialRevokes": false,
     "compatibilityOptions": [],
     "capabilities": [],
-    "begin": "2026-06-06 17:25:35"
+    "begin": "2026-06-08 14:04:58"
 }

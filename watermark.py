@@ -10,14 +10,18 @@ import tempfile
 import os
 
 
-def update_config_watermark(config_path: str, source_table: str,
+def update_config_watermark(config_path: str, source_db: str, source_table: str,
                             new_value, status: str):
-    """Persist last_loaded_at + last_run_status for one table (atomic write)."""
+    """Persist last_loaded_at + last_run_status for one table (atomic write).
+
+    Matches on BOTH source_db and source_table so tables with the same name in
+    different schemas don't collide.
+    """
     with open(config_path) as f:
         cfg = json.load(f)
 
     for t in cfg["tables"]:
-        if t["source_table"] == source_table:
+        if t.get("source_db") == source_db and t.get("source_table") == source_table:
             if new_value is not None:
                 t["last_loaded_at"] = new_value
             t["last_run_status"] = status

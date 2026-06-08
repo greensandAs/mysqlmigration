@@ -720,11 +720,10 @@ with tab_hist:
             con = get_sf(cfg); cur = con.cursor()
             cur.execute(f"""
                 SELECT INSERTED_AT, BATCH_ID, SOURCE_DB, SOURCE_TABLE, TARGET_TABLE,
-                       LOAD_TYPE, ENGINE, ROWS_EXTRACTED, ROWS_RAW, ROWS_SILVER,
-                       DURATION_SEC, STATUS, FAILED_STEP, ERROR_MESSAGE,
-                       WATERMARK_FROM, WATERMARK_TO, RUN_START_UTC, RUN_END_UTC
-                FROM MIGRATION_DB.META.RUN_LOG
-                ORDER BY INSERTED_AT DESC LIMIT {int(limit)}""")
+                       LOAD_TYPE, ENGINE, STATUS, FAILED_STEP, DURATION_SEC,
+                       ROW_DETAIL, WATERMARK_FROM, WATERMARK_TO, ERROR_MESSAGE
+                FROM MIGRATION_DB.META.V_RUN_LOG
+                LIMIT {int(limit)}""")
             rows = cur.fetchall()
             cols = [d[0] for d in cur.description]
             cur.close(); con.close()
@@ -738,6 +737,7 @@ with tab_hist:
         def _style(val):
             return {"success": f"color:{ST_SUCCESS};font-weight:700",
                     "failed": f"color:{ST_FAILED};font-weight:700",
+                    "mismatch": f"color:{ST_SKIPPED};font-weight:700",
                     "skipped": f"color:{ST_SKIPPED};font-weight:700"}.get(str(val).lower(), "")
         st.dataframe(hist.style.map(_style, subset=["STATUS"]),
                      use_container_width=True, hide_index=True)

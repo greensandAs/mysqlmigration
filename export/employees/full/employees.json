@@ -1,5 +1,5 @@
 {
-    "schema": "mtest",
+    "schema": "employees",
     "includesDdl": true,
     "includesViewsDdl": true,
     "includesData": true,
@@ -8,6 +8,6 @@
     ],
     "views": [],
     "basenames": {
-        "employees": "mtest@employees"
+        "employees": "employees@employees"
     }
 }

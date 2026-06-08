@@ -88,7 +88,7 @@ def copy_into_full(cur, tbl: dict, columns):
         f"ON_ERROR = ABORT_STATEMENT\n"
         f"PURGE = TRUE"
     )
-    return _rows_loaded(cur)
+    return _copy_rows_loaded(cur)
 
 
 def copy_into_merge(cur, tbl: dict):
@@ -146,6 +146,20 @@ def _rows_loaded(cur) -> int:
         return int(cur.rowcount) if cur.rowcount and cur.rowcount > 0 else 0
     except Exception:
         return 0
+
+
+def _copy_rows_loaded(cur) -> int:
+    """Sum the ROWS_LOADED column from a COPY INTO result set.
+
+    For COPY, cur.rowcount is the number of result rows (one per file), NOT the
+    rows loaded — so we read the 'rows_loaded' column instead.
+    """
+    try:
+        cols = [d[0].lower() for d in cur.description]
+        idx = cols.index("rows_loaded")
+        return sum(int(r[idx]) for r in cur.fetchall() if r[idx] is not None)
+    except Exception:
+        return _rows_loaded(cur)
 
 
 def call_build_silver(cur, tbl: dict) -> str:

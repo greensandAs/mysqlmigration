@@ -223,3 +223,33 @@ table counts, the namespace map, and this **User Guide**.
 - **Monitoring**: `monitoring.sql` has failed-run, stale-table, and RAW-vs-SILVER
   reconciliation queries. The orchestrator exits non-zero on any failure, so a
   scheduler can alert.
+
+---
+
+## 13. Scale considerations & known limits
+
+The extractor and reconciler run on the **local host**, so memory there is the
+main constraint at very large scale:
+
+- **Incremental extraction memory**: `extractor_incremental.py` uses `connectorx`,
+  which materializes the **entire delta in memory** (Arrow) before writing Parquet.
+  A very large incremental spike (e.g. tens of millions of changed rows in one
+  window) can trigger an out-of-memory error on the host.
+  - Note: `rows_per_file` **splits the already-in-memory table** — it improves
+    Snowflake COPY parallelism but does **not** reduce peak extraction memory.
+  - Mitigations: run incrementals on a smaller cadence (smaller windows), give the
+    host enough RAM, or — for known huge backfills — use a **full** load (mysqlsh
+    streams to disk) instead of one giant incremental.
+
+- **Reconciliation memory/transfer**: `reconciler.py` pulls the **full set of
+  primary keys** from both MySQL and Snowflake into local memory to diff them.
+  For tables with hundreds of millions of rows this is a large transfer and
+  memory footprint, and runtime grows with table size.
+  - Mitigations: only enable `reconcile: true` on tables that actually need
+    delete detection; run reconcile on a less frequent cadence (e.g. weekly); or
+    keep delete-sensitive large tables on **full** load (deletes propagate for free
+    via the truncate+reload).
+
+These are batch-on-host realities, not correctness issues. For very large
+workloads, a future enhancement could chunk extraction by key/time ranges and
+push the reconcile diff into Snowflake as a set-based anti-join.

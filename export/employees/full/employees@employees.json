@@ -1,13 +1,14 @@
 {
     "options": {
-        "schema": "mtest",
+        "schema": "employees",
         "table": "employees",
         "columns": [
-            "id",
-            "name",
-            "department",
-            "salary",
-            "updated_at"
+            "emp_no",
+            "birth_date",
+            "first_name",
+            "last_name",
+            "gender",
+            "hire_date"
         ],
         "defaultCharacterSet": "utf8mb4",
         "fieldsTerminatedBy": "\t",
@@ -23,7 +24,7 @@
     "chunking": true,
     "compression": "zstd",
     "primaryIndex": [
-        "id"
+        "emp_no"
     ],
     "partitions": [],
     "basenames": {}
