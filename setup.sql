@@ -54,10 +54,16 @@ CREATE TABLE IF NOT EXISTS MIGRATION_DB.META.RUN_LOG (
     WATERMARK_TO    VARCHAR,
     STATUS          VARCHAR,                 -- success | failed | skipped
     ERROR_MESSAGE   VARCHAR,
+    FAILED_STEP     VARCHAR,                 -- step that failed (ddl/extract/copy/merge/...)
+    DURATION_SEC    NUMBER(38,2),            -- wall-clock seconds for the table
     RUN_START_UTC   TIMESTAMP_NTZ,
     RUN_END_UTC     TIMESTAMP_NTZ,
     INSERTED_AT     TIMESTAMP_NTZ  DEFAULT CURRENT_TIMESTAMP()
 );
+
+-- Add the newer columns to a pre-existing RUN_LOG (no-op if already present).
+ALTER TABLE MIGRATION_DB.META.RUN_LOG ADD COLUMN IF NOT EXISTS FAILED_STEP VARCHAR;
+ALTER TABLE MIGRATION_DB.META.RUN_LOG ADD COLUMN IF NOT EXISTS DURATION_SEC NUMBER(38,2);
 
 -- ─── RAW -> SILVER builder ──────────────────────────────────────────────────
 -- Dedupes <SOURCE_DB>_RAW.<table> on the primary key (latest row by watermark)
@@ -87,7 +93,9 @@ DECLARE
     affected      NUMBER  := 0;
 BEGIN
     -- Business columns = SILVER table columns (audit cols excluded by design).
-    SELECT LISTAGG(COLUMN_NAME, ', ') WITHIN GROUP (ORDER BY ORDINAL_POSITION)
+    -- Quote every identifier so lowercase/mixed-case MySQL columns resolve.
+    SELECT LISTAGG('"' || COLUMN_NAME || '"', ', ')
+                WITHIN GROUP (ORDER BY ORDINAL_POSITION)
       INTO :cols_csv
       FROM MIGRATION_DB.INFORMATION_SCHEMA.COLUMNS
      WHERE TABLE_SCHEMA = :silver_schema AND TABLE_NAME = :P_TABLE;
@@ -109,15 +117,15 @@ BEGIN
                ' (no PK; rows inserted: ' || affected || ')';
     END IF;
 
-    -- UPDATE SET for every non-PK column.
-    SELECT LISTAGG('t.' || COLUMN_NAME || ' = s.' || COLUMN_NAME, ', ')
+    -- UPDATE SET for every non-PK column (quoted identifiers).
+    SELECT LISTAGG('t."' || COLUMN_NAME || '" = s."' || COLUMN_NAME || '"', ', ')
                 WITHIN GROUP (ORDER BY ORDINAL_POSITION)
       INTO :set_csv
       FROM MIGRATION_DB.INFORMATION_SCHEMA.COLUMNS
      WHERE TABLE_SCHEMA = :silver_schema AND TABLE_NAME = :P_TABLE
        AND UPPER(COLUMN_NAME) <> UPPER(:P_PRIMARY_KEY);
 
-    SELECT LISTAGG('s.' || COLUMN_NAME, ', ')
+    SELECT LISTAGG('s."' || COLUMN_NAME || '"', ', ')
                 WITHIN GROUP (ORDER BY ORDINAL_POSITION)
       INTO :ins_vals
       FROM MIGRATION_DB.INFORMATION_SCHEMA.COLUMNS
@@ -125,17 +133,17 @@ BEGIN
 
     -- Dedupe RAW to the latest row per PK and carry _IS_DELETED so soft-deleted
     -- keys are removed from SILVER (Snowflake MERGE has no NOT MATCHED BY SOURCE,
-    -- so we DELETE matched rows flagged deleted).
+    -- so we DELETE matched rows flagged deleted). All identifiers are quoted.
     merge_sql :=
         'MERGE INTO ' || silver_tbl || ' t USING (' ||
         '  SELECT ' || cols_csv || ', _is_del FROM (' ||
         '    SELECT ' || cols_csv || ', ' ||
         '           COALESCE("_IS_DELETED", FALSE) AS _is_del, ' ||
-        '           ROW_NUMBER() OVER (PARTITION BY ' || :P_PRIMARY_KEY ||
-        '             ORDER BY ' || order_col || ' DESC NULLS LAST) AS _rn' ||
+        '           ROW_NUMBER() OVER (PARTITION BY "' || :P_PRIMARY_KEY || '"' ||
+        '             ORDER BY "' || order_col || '" DESC NULLS LAST) AS _rn' ||
         '    FROM ' || raw_tbl ||
         '  ) WHERE _rn = 1' ||
-        ') s ON t.' || :P_PRIMARY_KEY || ' = s.' || :P_PRIMARY_KEY ||
+        ') s ON t."' || :P_PRIMARY_KEY || '" = s."' || :P_PRIMARY_KEY || '"' ||
         ' WHEN MATCHED AND s._is_del THEN DELETE' ||
         CASE WHEN set_csv IS NOT NULL
              THEN ' WHEN MATCHED AND NOT s._is_del THEN UPDATE SET ' || set_csv
@@ -231,7 +239,7 @@ BEGIN
         '    ' || ct_expr || ' AS _ct, ' ||
         '    HASH(' || track_csv || ') AS _hash, ' ||
         '    ROW_NUMBER() OVER (PARTITION BY "' || :P_PRIMARY_KEY || '" ' ||
-        '      ORDER BY ' || order_col || ' DESC NULLS LAST) AS _rn ' ||
+        '      ORDER BY "' || order_col || '" DESC NULLS LAST) AS _rn ' ||
         '  FROM ' || raw_tbl ||
         ') WHERE _rn = 1';
 

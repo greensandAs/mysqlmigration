@@ -721,8 +721,8 @@ with tab_hist:
             cur.execute(f"""
                 SELECT INSERTED_AT, BATCH_ID, SOURCE_DB, SOURCE_TABLE, TARGET_TABLE,
                        LOAD_TYPE, ENGINE, ROWS_EXTRACTED, ROWS_RAW, ROWS_SILVER,
-                       WATERMARK_FROM, WATERMARK_TO, STATUS, ERROR_MESSAGE,
-                       RUN_START_UTC, RUN_END_UTC
+                       DURATION_SEC, STATUS, FAILED_STEP, ERROR_MESSAGE,
+                       WATERMARK_FROM, WATERMARK_TO, RUN_START_UTC, RUN_END_UTC
                 FROM MIGRATION_DB.META.RUN_LOG
                 ORDER BY INSERTED_AT DESC LIMIT {int(limit)}""")
             rows = cur.fetchall()
@@ -747,8 +747,9 @@ with tab_hist:
             st.markdown('<div class="section-header">❌ Error Detail</div>',
                         unsafe_allow_html=True)
             for _, row in failed.iterrows():
+                step = row.get("FAILED_STEP") or "?"
                 with st.expander(f"❌ {row.get('SOURCE_DB', '?')}.{row.get('TARGET_TABLE', '?')} "
-                                 f"— {str(row.get('INSERTED_AT', ''))[:19]}"):
+                                 f"— step: {step} — {str(row.get('INSERTED_AT', ''))[:19]}"):
                     st.code(row.get("ERROR_MESSAGE") or "No error message", language="text")
     elif hist is not None:
         st.info("No run history yet. Run the migration first.")

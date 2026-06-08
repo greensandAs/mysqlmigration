@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 import uuid
 from datetime import datetime, timezone
 
@@ -127,45 +128,58 @@ def _process_table(tbl, src_cfg, sf_conn, mysql_conn, export_dir, batch_id,
         "load_type": label.lower(), "engine": engine,
         "rows_extracted": 0, "rows_raw": 0, "rows_silver": 0,
         "watermark_from": tbl.get("last_loaded_at"), "watermark_to": None,
-        "status": "failed", "error_message": None,
+        "status": "failed", "error_message": None, "failed_step": None,
+        "duration_sec": None,
         "run_start_utc": _utc_now(), "run_end_utc": None,
     }
     cur = sf_conn.cursor()
+    t0 = time.monotonic()
+    step = "start"
     try:
         # 1. DDL
+        step = "ddl"
         meta = ddl_generator.generate_and_apply(sf_conn, mysql_conn, tbl)
         columns = meta["columns"]
 
         # 1b. Additive schema-drift reconciliation (RAW + SILVER).
+        step = "schema_drift"
         schema_drift.detect_and_apply(cur, mysql_conn, tbl)
 
         if is_full:
             # 2/3. mysqlsh -> PUT -> TRUNCATE+COPY
+            step = "extract_full"
             files, _ = extractor_full.extract_full_mysqlsh(
                 tbl, src_cfg, export_dir)
+            step = "put"
             for fp in files:
                 loader.put_file(cur, fp, tbl, "full")
+            step = "copy_full"
             rec["rows_raw"] = loader.copy_into_full(cur, tbl, columns)
             rec["rows_extracted"] = rec["rows_raw"]
         else:
             # 2/3. connectorx -> PUT -> COPY+MERGE
+            step = "extract_incremental"
             files, rows, wm_to = extractor_incremental.extract_incremental_connectorx(
                 tbl, src_cfg, export_dir)
             rec["rows_extracted"] = rows
             rec["watermark_to"] = wm_to
             if files and rows > 0:
+                step = "put"
                 loader.clear_stage_safe(cur, tbl, "incremental")
                 for fp in files:
                     loader.put_file(cur, fp, tbl, "incremental")
+                step = "copy_merge"
                 rec["rows_raw"] = loader.copy_into_merge(cur, tbl)
             else:
                 rec["status"] = "skipped"
 
         if rec["status"] != "skipped":
             # 4. Build target layer (SILVER, or SCD2 dimension)
+            step = "build_target"
             msg = loader.build_target(cur, tbl)
             print(f"   {msg}")
             # 5. watermark from RAW (source of truth)
+            step = "watermark"
             wm = loader.current_max_watermark(cur, tbl)
             if wm:
                 rec["watermark_to"] = wm
@@ -183,12 +197,14 @@ def _process_table(tbl, src_cfg, sf_conn, mysql_conn, export_dir, batch_id,
     except Exception as e:  # noqa: BLE001 — log + continue to next table
         sf_conn.rollback()
         rec["status"] = "failed"
+        rec["failed_step"] = step
         rec["error_message"] = str(e)[:4000]
         watermark.update_config_watermark(
             config_path, tbl["source_table"], None, "failed")
-        print(f"   FAILED: {e}")
+        print(f"   FAILED at step '{step}': {e}")
     finally:
         rec["run_end_utc"] = _utc_now()
+        rec["duration_sec"] = round(time.monotonic() - t0, 2)
         try:
             run_log.write_run_log(cur, rec)
             sf_conn.commit()
@@ -228,6 +244,7 @@ def run_reconcile(config_path: str = "migration_config.json", only_table: str | 
             if only_table and tbl["source_table"] != only_table:
                 continue
             cur = sf_conn.cursor()
+            t0 = time.monotonic()
             rec = {
                 "batch_id": batch_id, "source_db": tbl["source_db"],
                 "source_table": tbl["source_table"],
@@ -235,7 +252,8 @@ def run_reconcile(config_path: str = "migration_config.json", only_table: str | 
                 "load_type": "reconcile", "engine": "reconciler",
                 "rows_extracted": None, "rows_raw": 0, "rows_silver": None,
                 "watermark_from": None, "watermark_to": None,
-                "status": "failed", "error_message": None,
+                "status": "failed", "error_message": None, "failed_step": None,
+                "duration_sec": None,
                 "run_start_utc": _utc_now(), "run_end_utc": None,
             }
             print(f"\n[RECONCILE] {tbl['source_db']}.{tbl['source_table']} "
@@ -257,10 +275,12 @@ def run_reconcile(config_path: str = "migration_config.json", only_table: str | 
                 sf_conn.rollback()
                 failed += 1
                 rec["status"] = "failed"
+                rec["failed_step"] = "reconcile"
                 rec["error_message"] = str(e)[:4000]
                 print(f"   FAILED: {e}")
             finally:
                 rec["run_end_utc"] = _utc_now()
+                rec["duration_sec"] = round(time.monotonic() - t0, 2)
                 try:
                     run_log.write_run_log(cur, rec)
                     sf_conn.commit()
@@ -304,6 +324,7 @@ def run_validate(config_path: str = "migration_config.json", only_table: str | N
                 continue
             cur = sf_conn.cursor()
             start = _utc_now()
+            t0 = time.monotonic()
             try:
                 r = validator.validate_table(cur, mysql_conn, tbl)
                 ok = r["ok"]
@@ -324,6 +345,8 @@ def run_validate(config_path: str = "migration_config.json", only_table: str | N
                     "status": "success" if ok else "failed",
                     "error_message": None if ok else
                     f"source {r['source']} != raw_live {r['raw_live']} (delta {r['delta']:+d})",
+                    "failed_step": None if ok else "parity",
+                    "duration_sec": round(time.monotonic() - t0, 2),
                     "run_start_utc": start, "run_end_utc": _utc_now(),
                 })
                 sf_conn.commit()
