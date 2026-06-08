@@ -158,11 +158,23 @@ The watermark cannot see hard-deletes. For incremental tables, set
 ---
 
 ## 9. Schema drift
-
 Before each load the tool diffs MySQL columns vs the RAW table:
 - **New** MySQL columns → auto `ALTER TABLE ADD COLUMN` (typed) on RAW + SILVER/SCD2.
 - **Dropped** columns → warning only (data preserved).
 - Type changes are not auto-applied.
+
+---
+
+## 9b. Source ↔ target validation (parity)
+
+Before cutover you need to prove the data is fully in sync. The tool compares
+**MySQL row counts** against **Snowflake RAW live rows** (excluding soft-deleted):
+- **Counts tab → 🔍 Validate vs MySQL**, or `python orchestrator.py --validate [--table NAME]`.
+- `Parity ✅` = `source == RAW live`. `⚠️` = mismatch (re-run the table / reconcile).
+- The transform layer (SILVER dedupe / SCD2 versions) is shown for reference but
+  legitimately differs from RAW, so parity is judged on **source vs RAW**.
+- `--validate` writes `RUN_LOG` rows (status `failed` on mismatch) and exits
+  non-zero, so a scheduler can gate cutover on a clean validation.
 
 ---
 

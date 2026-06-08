@@ -39,12 +39,12 @@
       "primary_key": "ID",
       "load_type": "incremental",
       "watermark_col": "UPDATED_AT",
-      "last_loaded_at": "2026-06-06 17:19:51.000",
+      "last_loaded_at": "2026-06-06 17:28:09.000",
       "partition_col": "ID",
       "partition_num": 8,
       "reconcile": true,
       "active": true,
-      "last_run_status": "skipped",
+      "last_run_status": "success",
       "rows_per_file": 1000000
     }
   ]

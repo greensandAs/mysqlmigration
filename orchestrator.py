@@ -34,6 +34,7 @@ import loader
 import reconciler
 import run_log
 import schema_drift
+import validator
 import watermark
 
 
@@ -275,9 +276,75 @@ def run_reconcile(config_path: str = "migration_config.json", only_table: str | 
     return failed
 
 
+def run_validate(config_path: str = "migration_config.json", only_table: str | None = None):
+    """Parity check: MySQL row count vs Snowflake RAW-live (and target) per
+    active table. Prints a report, writes RUN_LOG rows, returns mismatch count.
+    """
+    with open(config_path) as f:
+        cfg = json.load(f)
+    src_cfg = _build_src_cfg(cfg["source"])
+    sf_cfg = _build_sf_cfg(cfg["snowflake"])
+    batch_id = uuid.uuid4().hex[:12]
+
+    print("=" * 64)
+    print(f" Source↔Target validation | batch {batch_id} | {_utc_now()} UTC")
+    print("=" * 64)
+
+    mysql_conn = mysql.connector.connect(
+        host=src_cfg["host"], port=src_cfg["port"],
+        user=src_cfg["user"], password=src_cfg["password"],
+    )
+    sf_conn = loader.get_sf_conn(sf_cfg)
+    mismatches = 0
+    try:
+        for tbl in cfg["tables"]:
+            if not tbl.get("active", True):
+                continue
+            if only_table and tbl["source_table"] != only_table:
+                continue
+            cur = sf_conn.cursor()
+            start = _utc_now()
+            try:
+                r = validator.validate_table(cur, mysql_conn, tbl)
+                ok = r["ok"]
+                flag = "OK" if ok else f"MISMATCH (delta {r['delta']:+d})"
+                print(f"  {tbl['source_db']}.{tbl['source_table']}: "
+                      f"source={r['source']} raw_live={r['raw_live']} "
+                      f"{r['target_layer']}={r['target']} -> {flag}")
+                if not ok:
+                    mismatches += 1
+                run_log.write_run_log(cur, {
+                    "batch_id": batch_id, "source_db": tbl["source_db"],
+                    "source_table": tbl["source_table"],
+                    "target_table": tbl["target_table"],
+                    "load_type": "validate", "engine": "validator",
+                    "rows_extracted": r["source"], "rows_raw": r["raw_live"],
+                    "rows_silver": r["target"], "watermark_from": None,
+                    "watermark_to": None,
+                    "status": "success" if ok else "failed",
+                    "error_message": None if ok else
+                    f"source {r['source']} != raw_live {r['raw_live']} (delta {r['delta']:+d})",
+                    "run_start_utc": start, "run_end_utc": _utc_now(),
+                })
+                sf_conn.commit()
+            except Exception as e:  # noqa: BLE001
+                mismatches += 1
+                print(f"  {tbl['source_table']}: VALIDATION ERROR: {e}")
+            finally:
+                cur.close()
+    finally:
+        mysql_conn.close()
+        sf_conn.close()
+
+    print(f"\nValidation complete: {_utc_now()} UTC (batch {batch_id}) | "
+          f"mismatches: {mismatches}")
+    return mismatches
+
+
 if __name__ == "__main__":
     args = sys.argv[1:]
     reconcile_mode = "--reconcile" in args
+    validate_mode = "--validate" in args
     force_full = "--full" in args
     only_table = None
     positional = []
@@ -292,9 +359,11 @@ if __name__ == "__main__":
         i += 1
     path = positional[0] if positional else "migration_config.json"
 
-    if reconcile_mode:
+    if validate_mode:
+        failed = run_validate(path, only_table=only_table)
+    elif reconcile_mode:
         failed = run_reconcile(path, only_table=only_table)
     else:
         failed = run(path, force_full=force_full, only_table=only_table)
-    # Non-zero exit code on any failure so schedulers can alert.
+    # Non-zero exit code on any failure/mismatch so schedulers can alert.
     raise SystemExit(1 if failed else 0)

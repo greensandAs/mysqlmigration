@@ -307,7 +307,6 @@ def render_footer():
         f'Powered by <span style="color:{TA_ORANGE};font-weight:700;">Tiger Analytics</span>'
         , unsafe_allow_html=True)
 
-
 # ── Load config ───────────────────────────────────────────────────────────────
 cfg = load_config()
 
@@ -762,9 +761,11 @@ with tab_counts:
                 unsafe_allow_html=True)
     st.caption("RAW = MIGRATION_DB.<DB>_RAW · SILVER = <DB>_SILVER · "
                "SCD2 current = <DB>_SCD2 WHERE IS_CURRENT=TRUE")
-    c1, c2 = st.columns([1, 3])
+    c1, c2, c3 = st.columns([1, 1, 2])
     compute = c1.button("🔢 Compute Counts", type="primary", use_container_width=True)
-    auto_refresh = c2.toggle("Auto-refresh every 30s", value=False)
+    validate = c2.button("🔍 Validate vs MySQL", use_container_width=True,
+                         help="Compare MySQL row counts against Snowflake RAW (live)")
+    auto_refresh = c3.toggle("Auto-refresh every 30s", value=False)
     if compute or auto_refresh:
         rows_data = []
         try:
@@ -825,5 +826,66 @@ with tab_counts:
         if auto_refresh:
             time.sleep(30)
             st.rerun()
+
+    if validate:
+        st.markdown('<div class="section-header">Source ↔ Snowflake Parity</div>',
+                    unsafe_allow_html=True)
+        st.caption("Source (MySQL) vs RAW live rows (excluding soft-deleted). "
+                   "Target shown for reference (dedupe/versioning differs).")
+        vrows = []
+        try:
+            scon = get_sf(cfg); scur = scon.cursor()
+            mcon = get_mysql(cfg)
+
+            def _sfc(fqn, where=""):
+                try:
+                    q = f"SELECT COUNT(*) FROM {fqn}"
+                    if where:
+                        q += f" WHERE {where}"
+                    scur.execute(q)
+                    return scur.fetchone()[0]
+                except Exception:  # noqa: BLE001
+                    return None
+            for tbl in cfg.get("tables", []):
+                if not tbl.get("active", True):
+                    continue
+                is_scd2 = tbl.get("table_type") == "scd2"
+                mcur = mcon.cursor()
+                mcur.execute(
+                    f"SELECT COUNT(*) FROM `{tbl['source_db']}`.`{tbl['source_table']}`")
+                src = mcur.fetchone()[0]
+                mcur.close()
+                raw_live = _sfc(raw_fqn(tbl), 'COALESCE("_IS_DELETED", FALSE) = FALSE')
+                tgt = (_sfc(target_fqn(tbl), '"IS_CURRENT" = TRUE') if is_scd2
+                       else _sfc(target_fqn(tbl)))
+                parity = ("✅" if src == raw_live
+                          else "⚠️" if (src is not None and raw_live is not None) else "—")
+                vrows.append({
+                    "Source Table": f"{tbl['source_db']}.{tbl['source_table']}",
+                    "Source (MySQL)": src,
+                    "RAW (live)": raw_live,
+                    "Δ": (src - raw_live) if (src is not None and raw_live is not None) else None,
+                    "Parity": parity,
+                    "Target": tgt,
+                    "Target Layer": "SCD2" if is_scd2 else "SILVER",
+                })
+            scur.close(); scon.close(); mcon.close()
+        except Exception as e:  # noqa: BLE001
+            st.error(f"Validation error: {e}")
+        if vrows:
+            import pandas as pd
+            in_sync = sum(1 for r in vrows if r["Parity"] == "✅")
+            out_sync = sum(1 for r in vrows if r["Parity"] == "⚠️")
+            v1, v2 = st.columns(2)
+            v1.markdown(f"""<div class="metric-card" style="border-left:4px solid {ST_SUCCESS}">
+                <div class="label">In Sync</div>
+                <div class="value" style="color:{ST_SUCCESS}">{in_sync}</div>
+                <div class="sub">source = RAW live</div></div>""", unsafe_allow_html=True)
+            v2.markdown(f"""<div class="metric-card" style="border-left:4px solid {ST_FAILED}">
+                <div class="label">Out of Sync</div>
+                <div class="value" style="color:{ST_FAILED}">{out_sync}</div>
+                <div class="sub">needs re-run / reconcile</div></div>""", unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.dataframe(pd.DataFrame(vrows), use_container_width=True, hide_index=True)
 
 render_footer()
