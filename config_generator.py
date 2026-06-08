@@ -120,15 +120,17 @@ def build_table_entry(cur, schema, table):
     # Use the PK as partition col only when it is an integer type.
     partition_col = pk if (pk and cols.get(pk.lower()) in INT_TYPES) else None
 
+    # Snowflake columns are created UPPERCASE (see ddl_generator), so the
+    # identifier references stored here must be uppercase too.
     entry = {
         "source_db": schema,
         "source_table": table,
         "target_table": table.upper(),
-        "primary_key": pk,
+        "primary_key": pk.upper() if pk else None,
         "load_type": load_type,
-        "watermark_col": wm,
+        "watermark_col": wm.upper() if wm else None,
         "last_loaded_at": None,
-        "partition_col": partition_col,
+        "partition_col": partition_col.upper() if partition_col else None,
         "partition_num": DEFAULT_PARTITION_NUM if partition_col else 1,
         "reconcile": False,
         "active": active,

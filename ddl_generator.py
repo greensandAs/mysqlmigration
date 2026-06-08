@@ -84,7 +84,12 @@ def map_mysql_type(data_type: str, col_type: str, num_prec, num_scale,
 
 
 def get_mysql_columns(mysql_conn, source_db: str, source_table: str):
-    """Return ordered list of (name, snowflake_type) for a MySQL table."""
+    """Return ordered list of (NAME, snowflake_type) for a MySQL table.
+
+    Column names are UPPERCASED so Snowflake stores them as conventional
+    uppercase identifiers (queryable without quotes). MySQL column names are
+    case-insensitive, so uppercasing is safe for the extract side too.
+    """
     cur = mysql_conn.cursor(dictionary=True)
     cur.execute(
         """
@@ -102,7 +107,7 @@ def get_mysql_columns(mysql_conn, source_db: str, source_table: str):
             r["DATA_TYPE"], r["COLUMN_TYPE"], r["NUMERIC_PRECISION"],
             r["NUMERIC_SCALE"], r["CHARACTER_MAXIMUM_LENGTH"],
         )
-        cols.append((r["COLUMN_NAME"], sf_type))
+        cols.append((r["COLUMN_NAME"].upper(), sf_type))
     cur.close()
     if not cols:
         raise ValueError(

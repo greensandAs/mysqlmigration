@@ -1,0 +1,13 @@
+{
+    "schema": "mtest",
+    "includesDdl": true,
+    "includesViewsDdl": true,
+    "includesData": true,
+    "tables": [
+        "orders"
+    ],
+    "views": [],
+    "basenames": {
+        "orders": "mtest@orders"
+    }
+}

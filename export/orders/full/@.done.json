@@ -1,0 +1,12 @@
+{
+    "end": "2026-06-06 17:25:46",
+    "dataBytes": 148,
+    "tableDataBytes": {
+        "mtest": {
+            "orders": 148
+        }
+    },
+    "chunkFileBytes": {
+        "mtest@orders@@0.tsv.zst": 148
+    }
+}

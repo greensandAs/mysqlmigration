@@ -198,10 +198,11 @@ def _process_table(tbl, src_cfg, sf_conn, mysql_conn, export_dir, batch_id,
     return rec["status"]
 
 
-def run_reconcile(config_path: str = "migration_config.json"):
+def run_reconcile(config_path: str = "migration_config.json", only_table: str | None = None):
     """Delete-reconciliation pass: soft-delete RAW rows whose PK no longer
     exists in MySQL, then rebuild SILVER so deletes propagate. Only processes
-    active tables with "reconcile": true and a primary key. Returns fail count.
+    active tables with "reconcile": true and a primary key (optionally limited
+    to a single source_table via only_table). Returns fail count.
     """
     with open(config_path) as f:
         cfg = json.load(f)
@@ -222,6 +223,8 @@ def run_reconcile(config_path: str = "migration_config.json"):
     try:
         for tbl in cfg["tables"]:
             if not tbl.get("active", True) or not tbl.get("reconcile", False):
+                continue
+            if only_table and tbl["source_table"] != only_table:
                 continue
             cur = sf_conn.cursor()
             rec = {
@@ -290,7 +293,7 @@ if __name__ == "__main__":
     path = positional[0] if positional else "migration_config.json"
 
     if reconcile_mode:
-        failed = run_reconcile(path)
+        failed = run_reconcile(path, only_table=only_table)
     else:
         failed = run(path, force_full=force_full, only_table=only_table)
     # Non-zero exit code on any failure so schedulers can alert.
