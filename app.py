@@ -130,15 +130,6 @@ section[data-testid="stSidebar"] .stCaption {{ color: {TXT_SECONDARY} !important
 # ── Config helpers ────────────────────────────────────────────────────────────
 def _default_config() -> dict:
     return {
-        "source": {"host": os.getenv("MYSQL_HOST", "localhost"),
-                   "port": int(os.getenv("MYSQL_PORT", "3306")),
-                   "user": os.getenv("MYSQL_USER", "root"),
-                   "password": os.getenv("MYSQL_PASSWORD", "")},
-        "snowflake": {"account": os.getenv("SF_ACCOUNT", ""),
-                      "user": os.getenv("SF_USER", ""),
-                      "password": os.getenv("SF_PASSWORD", ""),
-                      "warehouse": os.getenv("SF_WAREHOUSE", "COMPUTE_WH"),
-                      "database": "MIGRATION_DB", "schema": "META"},
         "export_dir": str(HERE / "export"),
         "tables": [],
     }
@@ -161,7 +152,7 @@ def save_config(cfg: dict) -> None:
 
 
 def sf_conf(cfg: dict) -> dict:
-    out = dict(cfg["snowflake"])
+    out = dict(cfg.get("snowflake", {}))
     for k, e in {"account": "SF_ACCOUNT", "user": "SF_USER", "password": "SF_PASSWORD",
                  "warehouse": "SF_WAREHOUSE", "database": "SF_DATABASE",
                  "schema": "SF_SCHEMA"}.items():
@@ -171,7 +162,7 @@ def sf_conf(cfg: dict) -> dict:
 
 
 def my_conf(cfg: dict) -> dict:
-    out = dict(cfg["source"])
+    out = dict(cfg.get("source", {}))
     for k, e in {"host": "MYSQL_HOST", "port": "MYSQL_PORT",
                  "user": "MYSQL_USER", "password": "MYSQL_PASSWORD"}.items():
         if os.getenv(e):

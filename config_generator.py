@@ -13,8 +13,9 @@ PK handling:
   * composite PK           -> active=true, primary_key=first col (FLAGGED in output)
   * no PK                  -> active=false (needs manual decision; SILVER needs a key)
 
-Connection settings (source/snowflake/export_dir) are preserved from an existing
-migration_config.json if present, otherwise read from environment (.env).
+Connection settings are read exclusively from the environment (.env) and are
+never written into migration_config.json (no source/snowflake blocks). Only
+export_dir + tables are persisted.
 
 Usage:  python config_generator.py [SCHEMA_NAME] [output_path]
 """
@@ -36,27 +37,6 @@ WATERMARK_PRIORITY = ["updated_at", "modified_at", "last_updated"]
 INT_TYPES = {"tinyint", "smallint", "mediumint", "int", "integer", "bigint"}
 DEFAULT_PARTITION_NUM = 8
 CONFIG_PATH = "migration_config.json"
-
-
-def _source_from_env():
-    return {
-        "host": os.getenv("MYSQL_HOST", "localhost"),
-        "port": int(os.getenv("MYSQL_PORT", "3306")),
-        "user": os.getenv("MYSQL_USER", "root"),
-        "password": os.getenv("MYSQL_PASSWORD", "YOUR_MYSQL_PASSWORD"),
-    }
-
-
-def _snowflake_from_env():
-    return {
-        "account": os.getenv("SF_ACCOUNT", ""),
-        "user": os.getenv("SF_USER", ""),
-        "password": os.getenv("SF_PASSWORD", "YOUR_SF_PASSWORD"),
-        "role": os.getenv("SF_ROLE", "ACCOUNTADMIN"),
-        "warehouse": os.getenv("SF_WAREHOUSE", "COMPUTE_WH"),
-        "database": os.getenv("SF_DATABASE", "MIGRATION_DB"),
-        "schema": os.getenv("SF_SCHEMA", "META"),
-    }
 
 
 def _list_tables(cur, schema):
@@ -145,7 +125,7 @@ def main():
     schema = sys.argv[1] if len(sys.argv) > 1 else "company"
     out_path = sys.argv[2] if len(sys.argv) > 2 else CONFIG_PATH
 
-    # Preserve connection blocks from an existing config if present + valid.
+    # Load an existing config (if present + valid) to preserve tuned tables.
     cfg = None
     if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
         try:
@@ -156,21 +136,18 @@ def main():
             cfg = None
     if cfg is None:
         cfg = {}
-    cfg.setdefault("source", _source_from_env())
-    cfg.setdefault("snowflake", _snowflake_from_env())
+    # Connection blocks (source/snowflake) are intentionally NOT stored in the
+    # config; credentials come purely from the environment (.env).
+    cfg.pop("source", None)
+    cfg.pop("snowflake", None)
     cfg.setdefault("export_dir", "./export")
 
-    src = cfg["source"]
-    # Overlay env vars for the live connection (keeps secrets out of the JSON).
-    conn_src = dict(src)
-    for key, env in (("host", "MYSQL_HOST"), ("port", "MYSQL_PORT"),
-                     ("user", "MYSQL_USER"), ("password", "MYSQL_PASSWORD")):
-        val = os.getenv(env)
-        if val is not None:
-            conn_src[key] = int(val) if key == "port" else val
+    # Build the live MySQL connection from environment variables only.
     con = mysql.connector.connect(
-        host=conn_src["host"], port=int(conn_src["port"]),
-        user=conn_src["user"], password=conn_src["password"],
+        host=os.getenv("MYSQL_HOST", "localhost"),
+        port=int(os.getenv("MYSQL_PORT", "3306")),
+        user=os.getenv("MYSQL_USER", "root"),
+        password=os.getenv("MYSQL_PASSWORD", ""),
     )
     cur = con.cursor()
     try:

@@ -196,18 +196,35 @@ def generate_and_apply(sf_conn, mysql_conn, tbl: dict) -> dict:
 
 if __name__ == "__main__":
     import json
+    import os
     import snowflake.connector
+
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
 
     with open("migration_config.json") as f:
         cfg = json.load(f)
 
-    s = cfg["source"]
+    # Connections come purely from the environment (.env); the config file no
+    # longer stores source/snowflake credential blocks.
     myc = mysql.connector.connect(
-        host=s["host"], port=s["port"], user=s["user"], password=s["password"]
+        host=os.getenv("MYSQL_HOST", "localhost"),
+        port=int(os.getenv("MYSQL_PORT", "3306")),
+        user=os.getenv("MYSQL_USER", "root"),
+        password=os.getenv("MYSQL_PASSWORD", ""),
     )
-    sfc = snowflake.connector.connect(**{
-        k: v for k, v in cfg["snowflake"].items()
-    })
+    sfc = snowflake.connector.connect(
+        account=os.getenv("SF_ACCOUNT"),
+        user=os.getenv("SF_USER"),
+        password=os.getenv("SF_PASSWORD"),
+        role=os.getenv("SF_ROLE"),
+        warehouse=os.getenv("SF_WAREHOUSE"),
+        database=os.getenv("SF_DATABASE", "MIGRATION_DB"),
+        schema=os.getenv("SF_SCHEMA", "META"),
+    )
     try:
         for t in cfg["tables"]:
             if t.get("active", True):

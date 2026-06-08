@@ -77,8 +77,8 @@ def run(config_path: str = "migration_config.json", force_full: bool = False,
     with open(config_path) as f:
         cfg = json.load(f)
 
-    src_cfg = _build_src_cfg(cfg["source"])
-    sf_cfg = _build_sf_cfg(cfg["snowflake"])
+    src_cfg = _build_src_cfg(cfg.get("source", {}))
+    sf_cfg = _build_sf_cfg(cfg.get("snowflake", {}))
     export_dir = cfg["export_dir"]
     batch_id = uuid.uuid4().hex[:12]
 
@@ -223,8 +223,8 @@ def run_reconcile(config_path: str = "migration_config.json", only_table: str | 
     """
     with open(config_path) as f:
         cfg = json.load(f)
-    src_cfg = _build_src_cfg(cfg["source"])
-    sf_cfg = _build_sf_cfg(cfg["snowflake"])
+    src_cfg = _build_src_cfg(cfg.get("source", {}))
+    sf_cfg = _build_sf_cfg(cfg.get("snowflake", {}))
     batch_id = uuid.uuid4().hex[:12]
 
     print("=" * 64)
@@ -302,8 +302,8 @@ def run_validate(config_path: str = "migration_config.json", only_table: str | N
     """
     with open(config_path) as f:
         cfg = json.load(f)
-    src_cfg = _build_src_cfg(cfg["source"])
-    sf_cfg = _build_sf_cfg(cfg["snowflake"])
+    src_cfg = _build_src_cfg(cfg.get("source", {}))
+    sf_cfg = _build_sf_cfg(cfg.get("snowflake", {}))
     batch_id = uuid.uuid4().hex[:12]
 
     print("=" * 64)
