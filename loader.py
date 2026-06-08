@@ -34,6 +34,11 @@ def schema_names(source_db: str):
     return f"{base}_RAW", f"{base}_SILVER"
 
 
+def scd2_schema(source_db: str) -> str:
+    """Per-source SCD2 dimension schema name."""
+    return f"{source_db.strip().upper()}_SCD2"
+
+
 def raw_table(tbl: dict) -> str:
     raw_schema, _ = schema_names(tbl["source_db"])
     return f"{DB}.{raw_schema}.{tbl['target_table']}"

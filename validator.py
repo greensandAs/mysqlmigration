@@ -12,8 +12,7 @@ import loader
 
 def target_fqn(tbl: dict) -> str:
     if tbl.get("table_type") == "scd2":
-        s = loader.scd2_schema(tbl["source_db"]) if hasattr(loader, "scd2_schema") \
-            else f"{tbl['source_db'].strip().upper()}_SCD2"
+        s = loader.scd2_schema(tbl["source_db"])
     else:
         _, s = loader.schema_names(tbl["source_db"])
     return f"{loader.DB}.{s}.{tbl['target_table']}"
