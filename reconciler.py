@@ -17,58 +17,75 @@ import loader
 DELETE_BATCH = 5000
 
 
-def _mysql_pks(mysql_conn, tbl: dict) -> set:
+def _norm(r) -> tuple:
+    """Normalize a key row to a tuple of strings (None preserved).
+
+    MySQL returns Decimal/int/date objects while Snowflake returns str for a
+    VARCHAR key (e.g. an overflow DECIMAL(>38) stored as VARCHAR(65)). Comparing
+    as strings keeps both sides equal regardless of the source python type.
+    """
+    return tuple(str(v) if v is not None else None for v in r)
+
+
+def _mysql_pks(mysql_conn, tbl: dict, keys: list) -> set:
     cur = mysql_conn.cursor()
+    col_list = ", ".join(f"`{k}`" for k in keys)
     cur.execute(
-        f"SELECT `{tbl['primary_key']}` "
+        f"SELECT {col_list} "
         f"FROM `{tbl['source_db']}`.`{tbl['source_table']}`"
     )
-    pks = {r[0] for r in cur.fetchall()}
+    pks = {_norm(r) for r in cur.fetchall()}
     cur.close()
     return pks
 
 
-def _snowflake_live_pks(cur, tbl: dict) -> set:
-    """Current (not-yet-deleted) PKs in RAW."""
-    pk = tbl["primary_key"]
+def _snowflake_live_pks(cur, tbl: dict, keys: list) -> set:
+    """Current (not-yet-deleted) key tuples in RAW."""
+    col_list = ", ".join(f'"{k}"' for k in keys)
     cur.execute(
-        f'SELECT "{pk}" FROM {loader.raw_table(tbl)} '
+        f'SELECT {col_list} FROM {loader.raw_table(tbl)} '
         f'WHERE COALESCE("_IS_DELETED", FALSE) = FALSE'
     )
-    return {r[0] for r in cur.fetchall()}
+    return {_norm(r) for r in cur.fetchall()}
 
 
 def _sql_literal(v) -> str:
+    if v is None:
+        return "NULL"
     if isinstance(v, (int, float)):
         return str(v)
     return "'" + str(v).replace("'", "''") + "'"
 
 
 def reconcile_table(cur, mysql_conn, tbl: dict) -> dict:
-    """Soft-delete RAW rows whose PK no longer exists in MySQL.
+    """Soft-delete RAW rows whose (composite) key no longer exists in MySQL.
 
     Returns {"deleted": n, "skipped": reason|None}.
     """
-    pk = tbl.get("primary_key")
-    if not pk:
+    keys = loader.merge_keys(tbl)
+    if not keys:
         return {"deleted": 0, "skipped": "no primary key"}
 
-    mysql_pks = _mysql_pks(mysql_conn, tbl)
-    sf_pks = _snowflake_live_pks(cur, tbl)
+    mysql_pks = _mysql_pks(mysql_conn, tbl, keys)
+    sf_pks = _snowflake_live_pks(cur, tbl, keys)
     deleted_pks = list(sf_pks - mysql_pks)
 
     if not deleted_pks:
         return {"deleted": 0, "skipped": None}
 
     target = loader.raw_table(tbl)
+    key_cols = "(" + ", ".join(f'"{k}"' for k in keys) + ")"
     total = 0
     for i in range(0, len(deleted_pks), DELETE_BATCH):
         chunk = deleted_pks[i:i + DELETE_BATCH]
-        in_list = ", ".join(_sql_literal(v) for v in chunk)
+        tuples = ", ".join(
+            "(" + ", ".join(_sql_literal(v) for v in key_tuple) + ")"
+            for key_tuple in chunk
+        )
         cur.execute(
             f'UPDATE {target} '
             f'SET "_IS_DELETED" = TRUE, "_DELETED_AT" = CURRENT_TIMESTAMP() '
-            f'WHERE "{pk}" IN ({in_list}) '
+            f'WHERE {key_cols} IN ({tuples}) '
             f'AND COALESCE("_IS_DELETED", FALSE) = FALSE'
         )
         total += cur.rowcount or 0

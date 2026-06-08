@@ -1,0 +1,13 @@
+{
+    "schema": "mtest",
+    "includesDdl": true,
+    "includesViewsDdl": true,
+    "includesData": true,
+    "tables": [
+        "huge_decimals"
+    ],
+    "views": [],
+    "basenames": {
+        "huge_decimals": "mtest@huge_decimals"
+    }
+}

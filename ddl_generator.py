@@ -62,6 +62,12 @@ def map_mysql_type(data_type: str, col_type: str, num_prec, num_scale,
     if dt in ("decimal", "numeric"):
         p = int(num_prec) if num_prec is not None else 38
         s = int(num_scale) if num_scale is not None else 0
+        # Snowflake NUMBER maxes at precision 38; MySQL DECIMAL goes up to 65.
+        # Store overflow values as text (exact, collision-free). Plain VARCHAR =
+        # VARCHAR(16777216) in Snowflake (max length, no storage penalty), so it
+        # can never truncate the textual form (sign + digits + decimal point).
+        if p > 38:
+            return "VARCHAR"
         return f"NUMBER({p},{s})"
     if dt in ("float", "double", "real"):
         return "FLOAT"

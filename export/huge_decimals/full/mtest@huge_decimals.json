@@ -1,0 +1,28 @@
+{
+    "options": {
+        "schema": "mtest",
+        "table": "huge_decimals",
+        "columns": [
+            "massive_pk",
+            "payload",
+            "updated_at"
+        ],
+        "defaultCharacterSet": "utf8mb4",
+        "fieldsTerminatedBy": "\t",
+        "fieldsEnclosedBy": "",
+        "fieldsOptionallyEnclosed": false,
+        "fieldsEscapedBy": "\\",
+        "linesTerminatedBy": "\n"
+    },
+    "triggers": [],
+    "includesData": true,
+    "includesDdl": true,
+    "extension": "tsv.zst",
+    "chunking": true,
+    "compression": "zstd",
+    "primaryIndex": [
+        "massive_pk"
+    ],
+    "partitions": [],
+    "basenames": {}
+}

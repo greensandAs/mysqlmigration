@@ -1,0 +1,12 @@
+{
+    "end": "2026-06-09 01:35:05",
+    "dataBytes": 404,
+    "tableDataBytes": {
+        "mtest": {
+            "huge_decimals": 404
+        }
+    },
+    "chunkFileBytes": {
+        "mtest@huge_decimals@@0.tsv.zst": 404
+    }
+}

@@ -1,0 +1,13 @@
+{
+    "schema": "employees",
+    "includesDdl": true,
+    "includesViewsDdl": true,
+    "includesData": true,
+    "tables": [
+        "salaries"
+    ],
+    "views": [],
+    "basenames": {
+        "salaries": "employees@salaries"
+    }
+}

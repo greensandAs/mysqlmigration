@@ -44,6 +44,20 @@ def raw_table(tbl: dict) -> str:
     return f"{DB}.{raw_schema}.{tbl['target_table']}"
 
 
+def merge_keys(tbl: dict) -> list:
+    """Resolve the MERGE/dedupe key(s) for a table.
+
+    Uses the optional "merge_keys" list (composite key) when present, otherwise
+    falls back to the single "primary_key". Names are uppercased to match the
+    Snowflake identifiers created by ddl_generator.
+    """
+    keys = tbl.get("merge_keys")
+    if keys:
+        return [str(k).upper() for k in keys]
+    pk = tbl.get("primary_key")
+    return [str(pk).upper()] if pk else []
+
+
 def _stage_path(tbl: dict, subdir: str) -> str:
     base = tbl["source_db"].strip().upper()
     return f"{STAGE}/{base}/{tbl['target_table']}/{subdir}"
@@ -92,12 +106,16 @@ def copy_into_full(cur, tbl: dict, columns):
 
 
 def copy_into_merge(cur, tbl: dict):
-    """COPY parquet into temp table, then MERGE into RAW on the primary key."""
+    """COPY parquet into temp table, then MERGE into RAW on the (composite) key."""
     raw_schema, _ = schema_names(tbl["source_db"])
     target = raw_table(tbl)
     tmp = f"{DB}.{raw_schema}.{tbl['target_table']}_STAGE_TMP"
     stage_path = _stage_path(tbl, "incremental")
-    pk = tbl["primary_key"]
+    keys = merge_keys(tbl)
+    if not keys:
+        raise ValueError(
+            f"{tbl['source_table']}: incremental MERGE requires primary_key or merge_keys")
+    key_set = {k.upper() for k in keys}
 
     print(f"   CREATE TEMP {tmp}")
     cur.execute(f"CREATE OR REPLACE TEMPORARY TABLE {tmp} LIKE {target}")
@@ -123,17 +141,28 @@ def copy_into_merge(cur, tbl: dict):
     # '%' in SQL colliding with the connector's %-style parameter binding.
     cols = [r[0] for r in cur.fetchall() if not r[0].startswith("_")]
     set_clause = ", ".join(
-        f't."{c}" = s."{c}"' for c in cols if c.upper() != pk.upper()
+        f't."{c}" = s."{c}"' for c in cols if c.upper() not in key_set
     )
     insert_cols = ", ".join(f'"{c}"' for c in cols)
     insert_vals = ", ".join(f's."{c}"' for c in cols)
 
-    print(f"   MERGE INTO {target} on {pk}")
+    # Dedupe the staged delta to one row per (composite) key so the MERGE is
+    # deterministic. Multiple source rows matching one target row would otherwise
+    # raise "Duplicate row detected during DML action" (error 100090).
+    part_by = ", ".join(f'"{k}"' for k in keys)
+    wm = tbl.get("watermark_col")
+    order_by = f'"{wm}" DESC NULLS LAST' if wm else part_by
+    source = (f"(SELECT * FROM {tmp} "
+              f"QUALIFY ROW_NUMBER() OVER (PARTITION BY {part_by} "
+              f"ORDER BY {order_by}) = 1)")
+    on_clause = " AND ".join(f't."{k}" = s."{k}"' for k in keys)
+
+    print(f"   MERGE INTO {target} on {', '.join(keys)}")
     matched = (f" WHEN MATCHED THEN UPDATE SET {set_clause}"
                if set_clause else "")
     cur.execute(
-        f"MERGE INTO {target} t USING {tmp} s "
-        f'ON t."{pk}" = s."{pk}"'
+        f"MERGE INTO {target} t USING {source} s "
+        f"ON {on_clause}"
         f"{matched} "
         f"WHEN NOT MATCHED THEN INSERT ({insert_cols}) VALUES ({insert_vals})"
     )
@@ -165,7 +194,7 @@ def _copy_rows_loaded(cur) -> int:
 def call_build_silver(cur, tbl: dict) -> str:
     cur.execute(
         "CALL MIGRATION_DB.META.USP_BUILD_SILVER(%s, %s, %s, %s)",
-        (tbl["source_db"], tbl["target_table"], tbl["primary_key"],
+        (tbl["source_db"], tbl["target_table"], ",".join(merge_keys(tbl)),
          tbl.get("watermark_col")),
     )
     return cur.fetchone()[0]
@@ -176,7 +205,7 @@ def call_build_scd2(cur, tbl: dict) -> str:
     track_csv = ", ".join(f'"{c}"' for c in track) if track else None
     cur.execute(
         "CALL MIGRATION_DB.META.USP_BUILD_SCD2(%s, %s, %s, %s, %s)",
-        (tbl["source_db"], tbl["target_table"], tbl["primary_key"],
+        (tbl["source_db"], tbl["target_table"], ",".join(merge_keys(tbl)),
          tbl.get("watermark_col"), track_csv),
     )
     return cur.fetchone()[0]

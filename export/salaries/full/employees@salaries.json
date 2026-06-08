@@ -1,0 +1,31 @@
+{
+    "options": {
+        "schema": "employees",
+        "table": "salaries",
+        "columns": [
+            "emp_no",
+            "salary",
+            "from_date",
+            "to_date",
+            "updated_at"
+        ],
+        "defaultCharacterSet": "utf8mb4",
+        "fieldsTerminatedBy": "\t",
+        "fieldsEnclosedBy": "",
+        "fieldsOptionallyEnclosed": false,
+        "fieldsEscapedBy": "\\",
+        "linesTerminatedBy": "\n"
+    },
+    "triggers": [],
+    "includesData": true,
+    "includesDdl": true,
+    "extension": "tsv.zst",
+    "chunking": true,
+    "compression": "zstd",
+    "primaryIndex": [
+        "emp_no",
+        "from_date"
+    ],
+    "partitions": [],
+    "basenames": {}
+}
